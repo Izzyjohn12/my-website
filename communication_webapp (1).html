@@ -1,0 +1,1944 @@
+        function sendMessage() {
+            const input = document.getElementById('message-input');
+            const message = input.value.trim();
+            
+            if (message && currentChat) {
+                // Encrypt message (simulation)
+                const encryptedMessage = encryptMessage(message);
+                
+                // Create message object
+                const messageObj = {
+                    id: Date.now().toString(),
+                    content: message,
+                    senderId: currentUser.id,
+                    receiverId: currentChat,
+                    timestamp: new Date().toISOString(),
+                    encrypted: encryptedMessage
+                };
+                
+                // Add to chat history
+                if (!userChats.has(currentChat)) {
+                    userChats.set(currentChat, []);
+                }
+                userChats.get(currentChat).push(messageObj);
+                
+                // Save to localStorage
+                const chatsObj = Object.fromEntries(userChats);
+                localStorage.setItem(`connecthub_chats_${currentUser.id}`, JSON.stringify(chatsObj));
+                
+                // Add to UI
+                addMessageToChat(message, true, currentUser.username);
+                input.value = '';
+                scrollToBottom();
+                
+                // Update chat list
+                updateChatList();
+                
+                // Simulate delivery to other user (in real app, this would be via WebSocket)
+                setTimeout(() => {
+                    deliverMessageToReceiver(messageObj);
+                }, 100);
+            }
+        }
+
+        function deliverMessageToReceiver(messageObj) {
+            // In a real app, this would be handled by the server
+            // For demo, we'll add to receiver's chat history
+            const receiverChats = JSON.parse(localStorage.getItem(`connecthub_chats_${messageObj.receiverId}`) || '{}');
+            
+            if (!receiverChats[currentUser.id]) {
+                receiverChats[currentUser.id] = [];
+            }
+            receiverChats[currentUser.id].push(messageObj);
+            
+            localStorage.setItem(`connecthub_chats_${messageObj.receiverId}`, JSON.stringify(receiverChats));
+        }
+
+        // Add User Functions
+        function openAddUserModal() {
+            document.getElementById('add-user-modal').classList.add('active');
+            clearContactList();
+        }
+
+        function closeAddUserModal() {
+            document.getElementById('add-user-modal').classList.remove('active');
+        }
+
+        function clearContactList() {
+            const contactList = document.getElementById('contact-list');
+            contactList.innerHTML = '<div class="empty-state"><h4>No contacts found</h4><p>Grant contacts permission or search for users</p></div>';
+        }
+
+        async function loadDeviceContacts() {
+            if (!permissions.contacts) {
+                await requestPermission('contacts');
+                return;
+            }
+
+            try {
+                // Simulate contact loading (real implementation would use Contacts API)
+                const simulatedContacts = [
+                    { name: 'John Smith', phone: '+1234567890', email: 'john@example.com' },
+                    { name: 'Sarah Johnson', phone: '+1987654321', email: 'sarah@example.com' },
+                    { name: 'Mike Wilson', phone: '+1122334455', email: 'mike@example.com' },
+                    { name: 'Emily Davis', phone: '+1555666777', email: 'emily@example.com' }
+                ];
+
+                contacts = simulatedContacts;
+                displayContacts(contacts);
+            } catch (error) {
+                alert('Failed to load contacts: ' + error.message);
+            }
+        }
+
+        function displayContacts(contactList) {
+            const container = document.getElementById('contact-list');
+            const existingUsers = JSON.parse(localStorage.getItem('connecthub_users') || '{}');
+            
+            if (contactList.length === 0) {
+                clearContactList();
+                return;
+            }
+
+            container.innerHTML = '';
+
+            contactList.forEach(contact => {
+                // Check if contact is already a ConnectHub user
+                const existingUser = Object.values(existingUsers).find(user => 
+                    user.email === contact.email || user.username === contact.name
+                );
+
+                const contactItem = document.createElement('div');
+                contactItem.className = 'contact-item';
+                contactItem.innerHTML = `
+                    <div class="contact-info">
+                        <div class="user-avatar">${contact.name.substring(0, 2).toUpperCase()}</div>
+                        <div>
+                            <div style="font-weight: 600;">${contact.name}</div>
+                            <div style="font-size: 12px; color: #666;">
+                                ${existingUser ? 'ConnectHub User' : contact.email || contact.phone}
+                            </div>
+                        </div>
+                    </div>
+                    <button class="add-contact-btn" onclick="addContact('${existingUser ? existingUser.id : contact.email}')" 
+                            ${existingUser ? '' : 'disabled'}>
+                        ${existingUser ? 'Add' : 'Not on ConnectHub'}
+                    </button>
+                `;
+                container.appendChild(contactItem);
+            });
+        }
+
+        function addContact(userId) {
+            if (userId === currentUser.id) {
+                alert("You can't add yourself!");
+                return;
+            }
+
+            // Check if already in contacts
+            if (userChats.has(userId)) {
+                alert('User is already in your contacts!');
+                return;
+            }
+
+            // Add to chats with empty message array
+            userChats.set(userId, []);
+            
+            // Save to localStorage
+            const chatsObj = Object.fromEntries(userChats);
+            localStorage.setItem(`connecthub_chats_${currentUser.id}`, JSON.stringify(chatsObj));
+            
+            // Update UI
+            updateChatList();
+            closeAddUserModal();
+            
+            const existingUsers = JSON.parse(localStorage.getItem('connecthub_users') || '{}');
+            const addedUser = Object.values(existingUsers).find(user => user.id === userId);
+            alert(`${addedUser ? addedUser.username : 'User'} added to your contacts!`);
+        }
+
+        function searchUsers() {
+            const searchInput = document.getElementById('search-contacts');
+            const query = searchInput.value.trim();
+            
+            if (!query) {
+                alert('Please enter a username to search');
+                return;
+            }
+
+            const existingUsers = JSON.parse(localStorage.getItem('connecthub_users') || '{}');
+            const foundUsers = Object.values(existingUsers).filter(user => 
+                user.username.toLowerCase().includes(query.toLowerCase()) && 
+                user.id !== currentUser.id
+            );
+
+            if (foundUsers.length === 0) {
+                displayContacts([]);
+                return;
+            }
+
+            const searchResults = foundUsers.map(user => ({
+                name: user.username,
+                email: user.email,
+                id: user.id
+            }));
+
+            displaySearchResults(searchResults);
+        }
+
+        function displaySearchResults(results) {
+            const container = document.getElementById('contact-list');
+            container.innerHTML = '';
+
+            results.forEach(user => {
+                const contactItem = document.createElement('div');
+                contactItem.className = 'contact-item';
+                contactItem.innerHTML = `
+                    <div class="contact-info">
+                        <div class="user-avatar">${user.name.substring(0, 2).toUpperCase()}</div>
+                        <div>
+                            <div style="font-weight: 600;">${user.name}</div>
+                            <div style="font-size: 12px; color: #666;">${user.email}</div>
+                        </div>
+                    </div>
+                    <button class="add-contact-btn" onclick="addContact('${user.id}')">
+                        Add
+                    </button>
+                `;
+                container.appendChild(contactItem);
+            });
+        }<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>ConnectHub - Communication App</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            height: 100vh;
+            overflow: hidden;
+        }
+
+        .app-container {
+            display: flex;
+            height: 100vh;
+            max-width: 1200px;
+            margin: 0 auto;
+            background: rgba(255, 255, 255, 0.1);
+            backdrop-filter: blur(10px);
+            border-radius: 20px;
+            overflow: hidden;
+            box-shadow: 0 8px 32px rgba(0, 0, 0, 0.3);
+        }
+
+        .sidebar {
+            width: 80px;
+            background: rgba(0, 0, 0, 0.2);
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            padding: 20px 0;
+            transition: width 0.3s ease;
+        }
+
+        .sidebar.expanded {
+            width: 250px;
+        }
+
+        .nav-item {
+            width: 50px;
+            height: 50px;
+            margin: 10px 0;
+            background: rgba(255, 255, 255, 0.1);
+            border: none;
+            border-radius: 15px;
+            color: white;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 20px;
+            transition: all 0.3s ease;
+            position: relative;
+        }
+
+        .nav-item:hover, .nav-item.active {
+            background: rgba(255, 255, 255, 0.3);
+            transform: scale(1.1);
+        }
+
+        .main-content {
+            flex: 1;
+            display: flex;
+            flex-direction: column;
+            background: rgba(255, 255, 255, 0.95);
+            position: relative;
+        }
+
+        .header {
+            height: 70px;
+            background: rgba(255, 255, 255, 0.9);
+            backdrop-filter: blur(10px);
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding: 0 20px;
+            border-bottom: 1px solid rgba(0, 0, 0, 0.1);
+        }
+
+        .header h1 {
+            color: #333;
+            font-size: 24px;
+            font-weight: 600;
+        }
+
+        .user-info {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+
+        .user-avatar {
+            width: 40px;
+            height: 40px;
+            border-radius: 50%;
+            background: linear-gradient(45deg, #ff6b6b, #4ecdc4);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            color: white;
+            font-weight: bold;
+        }
+
+        .content-area {
+            flex: 1;
+            overflow: hidden;
+            position: relative;
+        }
+
+        .section {
+            display: none;
+            height: 100%;
+            padding: 20px;
+            overflow-y: auto;
+        }
+
+        .section.active {
+            display: flex;
+            flex-direction: column;
+        }
+
+        /* Chat Section */
+        .chat-container {
+            display: flex;
+            height: 100%;
+        }
+
+        .chat-list {
+            width: 300px;
+            background: rgba(248, 249, 250, 0.8);
+            border-right: 1px solid rgba(0, 0, 0, 0.1);
+            overflow-y: auto;
+        }
+
+        .chat-item {
+            padding: 15px;
+            border-bottom: 1px solid rgba(0, 0, 0, 0.05);
+            cursor: pointer;
+            transition: background 0.2s ease;
+            display: flex;
+            align-items: center;
+            gap: 12px;
+        }
+
+        .chat-item:hover, .chat-item.active {
+            background: rgba(103, 126, 234, 0.1);
+        }
+
+        .chat-area {
+            flex: 1;
+            display: flex;
+            flex-direction: column;
+        }
+
+        .messages-container {
+            flex: 1;
+            padding: 20px;
+            overflow-y: auto;
+            background: rgba(255, 255, 255, 0.5);
+        }
+
+        .message {
+            margin: 10px 0;
+            display: flex;
+            gap: 10px;
+        }
+
+        .message.own {
+            justify-content: flex-end;
+        }
+
+        .message-bubble {
+            max-width: 70%;
+            padding: 12px 16px;
+            border-radius: 18px;
+            background: rgba(103, 126, 234, 0.1);
+            position: relative;
+        }
+
+        .message.own .message-bubble {
+            background: #667eea;
+            color: white;
+        }
+
+        .message-input-area {
+            padding: 20px;
+            background: rgba(255, 255, 255, 0.9);
+            border-top: 1px solid rgba(0, 0, 0, 0.1);
+            display: flex;
+            gap: 10px;
+            align-items: center;
+        }
+
+        .message-input {
+            flex: 1;
+            padding: 12px 16px;
+            border: 1px solid rgba(0, 0, 0, 0.2);
+            border-radius: 25px;
+            outline: none;
+            font-size: 14px;
+        }
+
+        .send-btn, .media-btn {
+            width: 40px;
+            height: 40px;
+            border: none;
+            border-radius: 50%;
+            background: #667eea;
+            color: white;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            transition: all 0.2s ease;
+        }
+
+        .send-btn:hover, .media-btn:hover {
+            transform: scale(1.1);
+            background: #5a67d8;
+        }
+
+        /* Status Section */
+        .status-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+            gap: 20px;
+            padding: 20px 0;
+        }
+
+        .status-card {
+            background: rgba(255, 255, 255, 0.8);
+            border-radius: 15px;
+            overflow: hidden;
+            box-shadow: 0 4px 15px rgba(0, 0, 0, 0.1);
+            transition: transform 0.2s ease;
+        }
+
+        .status-card:hover {
+            transform: translateY(-5px);
+        }
+
+        .status-media {
+            width: 100%;
+            height: 150px;
+            background: linear-gradient(45deg, #ff9a9e, #fecfef);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 48px;
+            color: white;
+        }
+
+        .status-info {
+            padding: 15px;
+        }
+
+        .add-status-btn {
+            position: fixed;
+            bottom: 30px;
+            right: 30px;
+            width: 60px;
+            height: 60px;
+            background: #667eea;
+            border: none;
+            border-radius: 50%;
+            color: white;
+            font-size: 24px;
+            cursor: pointer;
+            box-shadow: 0 4px 20px rgba(102, 126, 234, 0.4);
+            transition: all 0.3s ease;
+        }
+
+        .add-status-btn:hover {
+            transform: scale(1.1);
+            box-shadow: 0 6px 25px rgba(102, 126, 234, 0.6);
+        }
+
+        /* Settings Section */
+        .settings-container {
+            max-width: 600px;
+            margin: 0 auto;
+        }
+
+        .settings-group {
+            background: rgba(255, 255, 255, 0.8);
+            border-radius: 15px;
+            margin: 20px 0;
+            overflow: hidden;
+        }
+
+        .settings-header {
+            padding: 20px;
+            background: rgba(103, 126, 234, 0.1);
+            font-weight: 600;
+            color: #333;
+        }
+
+        .settings-item {
+            padding: 15px 20px;
+            border-bottom: 1px solid rgba(0, 0, 0, 0.05);
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .settings-item:last-child {
+            border-bottom: none;
+        }
+
+        .toggle-switch {
+            width: 50px;
+            height: 25px;
+            background: #ccc;
+            border-radius: 25px;
+            position: relative;
+            cursor: pointer;
+            transition: background 0.3s ease;
+        }
+
+        .toggle-switch.active {
+            background: #667eea;
+        }
+
+        .toggle-switch::after {
+            content: '';
+            width: 21px;
+            height: 21px;
+            background: white;
+            border-radius: 50%;
+            position: absolute;
+            top: 2px;
+            left: 2px;
+            transition: transform 0.3s ease;
+        }
+
+        .toggle-switch.active::after {
+            transform: translateX(25px);
+        }
+
+        /* Modal */
+        .modal {
+            display: none;
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0, 0, 0, 0.5);
+            backdrop-filter: blur(5px);
+            z-index: 1000;
+            align-items: center;
+            justify-content: center;
+        }
+
+        .modal.active {
+            display: flex;
+        }
+
+        .modal-content {
+            background: white;
+            border-radius: 20px;
+            padding: 30px;
+            max-width: 500px;
+            width: 90%;
+            max-height: 80vh;
+            overflow-y: auto;
+        }
+
+        .permission-btn {
+            background: #667eea;
+            color: white;
+            border: none;
+            padding: 12px 24px;
+            border-radius: 8px;
+            cursor: pointer;
+            margin: 5px;
+            transition: all 0.2s ease;
+        }
+
+        .permission-btn:hover {
+            background: #5a67d8;
+            transform: translateY(-2px);
+        }
+
+        .permission-btn.granted {
+            background: #48bb78;
+        }
+
+        .permission-btn.denied {
+            background: #f56565;
+        }
+
+        /* Encryption Status */
+        .encryption-status {
+            position: fixed;
+            top: 20px;
+            right: 20px;
+            background: rgba(72, 187, 120, 0.9);
+            color: white;
+            padding: 8px 16px;
+            border-radius: 20px;
+            font-size: 12px;
+            font-weight: 600;
+            z-index: 100;
+        }
+
+        /* Auth Modal */
+        .auth-modal {
+            display: flex;
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            z-index: 2000;
+            align-items: center;
+            justify-content: center;
+        }
+
+        .auth-modal.hidden {
+            display: none;
+        }
+
+        .auth-container {
+            background: rgba(255, 255, 255, 0.95);
+            backdrop-filter: blur(20px);
+            border-radius: 20px;
+            padding: 40px;
+            max-width: 400px;
+            width: 90%;
+            text-align: center;
+            box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3);
+        }
+
+        .auth-container h2 {
+            color: #333;
+            margin-bottom: 30px;
+            font-size: 28px;
+        }
+
+        .auth-form {
+            display: flex;
+            flex-direction: column;
+            gap: 20px;
+        }
+
+        .auth-input {
+            padding: 15px;
+            border: 2px solid rgba(102, 126, 234, 0.2);
+            border-radius: 10px;
+            font-size: 16px;
+            outline: none;
+            transition: border-color 0.3s ease;
+        }
+
+        .auth-input:focus {
+            border-color: #667eea;
+        }
+
+        .auth-btn {
+            padding: 15px;
+            background: #667eea;
+            color: white;
+            border: none;
+            border-radius: 10px;
+            font-size: 16px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.3s ease;
+        }
+
+        .auth-btn:hover {
+            background: #5a67d8;
+            transform: translateY(-2px);
+        }
+
+        .auth-switch {
+            margin-top: 20px;
+            color: #666;
+        }
+
+        .auth-switch button {
+            background: none;
+            border: none;
+            color: #667eea;
+            cursor: pointer;
+            text-decoration: underline;
+        }
+
+        /* Add User Modal */
+        .add-user-modal {
+            display: none;
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0, 0, 0, 0.5);
+            backdrop-filter: blur(5px);
+            z-index: 1500;
+            align-items: center;
+            justify-content: center;
+        }
+
+        .add-user-modal.active {
+            display: flex;
+        }
+
+        .add-user-content {
+            background: white;
+            border-radius: 20px;
+            padding: 30px;
+            max-width: 500px;
+            width: 90%;
+            max-height: 80vh;
+            overflow-y: auto;
+        }
+
+        .contact-list {
+            max-height: 300px;
+            overflow-y: auto;
+            margin: 20px 0;
+        }
+
+        .contact-item {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding: 15px;
+            border-bottom: 1px solid rgba(0, 0, 0, 0.1);
+        }
+
+        .contact-info {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+        }
+
+        .add-contact-btn {
+            background: #667eea;
+            color: white;
+            border: none;
+            padding: 8px 16px;
+            border-radius: 20px;
+            cursor: pointer;
+            font-size: 12px;
+            transition: all 0.2s ease;
+        }
+
+        .add-contact-btn:hover {
+            background: #5a67d8;
+        }
+
+        .add-contact-btn:disabled {
+            background: #ccc;
+            cursor: not-allowed;
+        }
+
+        .search-input {
+            width: 100%;
+            padding: 12px 16px;
+            border: 1px solid rgba(0, 0, 0, 0.2);
+            border-radius: 25px;
+            outline: none;
+            font-size: 14px;
+            margin-bottom: 20px;
+        }
+
+        .add-user-btn {
+            position: fixed;
+            bottom: 100px;
+            right: 30px;
+            width: 60px;
+            height: 60px;
+            background: #48bb78;
+            border: none;
+            border-radius: 50%;
+            color: white;
+            font-size: 24px;
+            cursor: pointer;
+            box-shadow: 0 4px 20px rgba(72, 187, 120, 0.4);
+            transition: all 0.3s ease;
+            z-index: 100;
+        }
+
+        .add-user-btn:hover {
+            transform: scale(1.1);
+            box-shadow: 0 6px 25px rgba(72, 187, 120, 0.6);
+        }
+
+        .empty-state {
+            text-align: center;
+            padding: 60px 20px;
+            color: #666;
+        }
+
+        .empty-state h3 {
+            margin-bottom: 10px;
+            color: #333;
+        }
+        @media (max-width: 768px) {
+            .app-container {
+                border-radius: 0;
+                height: 100vh;
+            }
+            
+            .sidebar {
+                width: 60px;
+            }
+            
+            .chat-list {
+                width: 250px;
+            }
+            
+            .chat-container {
+                flex-direction: column;
+            }
+            
+            .status-grid {
+                grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
+                gap: 15px;
+            }
+        }
+
+        /* Online indicator */
+        .online-indicator {
+            width: 12px;
+            height: 12px;
+            background: #48bb78;
+            border-radius: 50%;
+            position: absolute;
+            bottom: 0;
+            right: 0;
+            border: 2px solid white;
+        }
+
+        /* Typing indicator */
+        .typing-indicator {
+            padding: 10px;
+            font-style: italic;
+            color: #666;
+            font-size: 12px;
+        }
+    </style>
+</head>
+<body>
+    <!-- Authentication Modal -->
+    <div class="auth-modal" id="auth-modal">
+        <div class="auth-container">
+            <h2 id="auth-title">Welcome to ConnectHub</h2>
+            <form class="auth-form" id="auth-form">
+                <input type="text" class="auth-input" id="username" placeholder="Username" required>
+                <input type="email" class="auth-input" id="email" placeholder="Email" required>
+                <input type="password" class="auth-input" id="password" placeholder="Password" required>
+                <input type="password" class="auth-input" id="confirm-password" placeholder="Confirm Password" style="display: none;">
+                <button type="submit" class="auth-btn" id="auth-submit">Sign Up</button>
+            </form>
+            <div class="auth-switch">
+                Already have an account? 
+                <button type="button" id="auth-switch-btn">Sign In</button>
+            </div>
+        </div>
+    </div>
+
+    <div class="app-container" id="app-container" style="display: none;">
+        <div class="sidebar" id="sidebar">
+            <button class="nav-item active" data-section="chat" title="Chat">💬</button>
+            <button class="nav-item" data-section="status" title="Status">📸</button>
+            <button class="nav-item" data-section="settings" title="Settings">⚙️</button>
+        </div>
+
+        <div class="main-content">
+            <div class="header">
+                <h1 id="section-title">Chat</h1>
+                <div class="user-info">
+                    <div class="user-avatar">JD</div>
+                    <span>John Doe</span>
+                </div>
+            </div>
+
+            <div class="content-area">
+                <!-- Chat Section -->
+                <div class="section active" id="chat-section">
+                    <div class="chat-container">
+                        <div class="chat-list" id="chat-list">
+                            <div class="empty-state" id="empty-chats">
+                                <h3>No Chats Yet</h3>
+                                <p>Start by adding contacts to begin chatting!</p>
+                            </div>
+                        </div>
+                        <div class="chat-area">
+                            <div class="messages-container" id="messages-container">
+                                <div class="empty-state" id="empty-messages">
+                                    <h3>Select a chat to start messaging</h3>
+                                    <p>Your messages will appear here</p>
+                                </div>
+                                <div id="typing-indicator" class="typing-indicator" style="display: none;"></div>
+                            </div>
+                            <div class="message-input-area">
+                                <button class="media-btn" onclick="openMediaModal()" title="Attach Media">📎</button>
+                                <input type="text" class="message-input" id="message-input" placeholder="Type a message..." onkeypress="handleKeyPress(event)">
+                                <button class="send-btn" onclick="sendMessage()" title="Send">➤</button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Status Section -->
+                <div class="section" id="status-section">
+                    <div class="status-grid">
+                        <div class="status-card">
+                            <div class="status-media">📸</div>
+                            <div class="status-info">
+                                <strong>Alice Smith</strong>
+                                <p style="font-size: 12px; color: #666; margin-top: 5px;">2 hours ago</p>
+                            </div>
+                        </div>
+                        <div class="status-card">
+                            <div class="status-media">🎥</div>
+                            <div class="status-info">
+                                <strong>Bob Johnson</strong>
+                                <p style="font-size: 12px; color: #666; margin-top: 5px;">5 hours ago</p>
+                            </div>
+                        </div>
+                        <div class="status-card">
+                            <div class="status-media">📷</div>
+                            <div class="status-info">
+                                <strong>Carol White</strong>
+                                <p style="font-size: 12px; color: #666; margin-top: 5px;">1 day ago</p>
+                            </div>
+                        </div>
+                    </div>
+                    <button class="add-status-btn" onclick="captureMedia()" title="Add Status">+</button>
+                    <button class="add-user-btn" onclick="openAddUserModal()" title="Add Contact">👥</button>
+                </div>
+
+                <!-- Settings Section -->
+                <div class="section" id="settings-section">
+                    <div class="settings-container">
+                        <div class="settings-group">
+                            <div class="settings-header">Privacy & Security</div>
+                            <div class="settings-item">
+                                <span>End-to-End Encryption</span>
+                                <div class="toggle-switch active" onclick="toggleSwitch(this)"></div>
+                            </div>
+                            <div class="settings-item">
+                                <span>Read Receipts</span>
+                                <div class="toggle-switch active" onclick="toggleSwitch(this)"></div>
+                            </div>
+                            <div class="settings-item">
+                                <span>Last Seen</span>
+                                <div class="toggle-switch" onclick="toggleSwitch(this)"></div>
+                            </div>
+                        </div>
+
+                        <div class="settings-group">
+                            <div class="settings-header">Notifications</div>
+                            <div class="settings-item">
+                                <span>Push Notifications</span>
+                                <div class="toggle-switch active" onclick="toggleSwitch(this)"></div>
+                            </div>
+                            <div class="settings-item">
+                                <span>Sound</span>
+                                <div class="toggle-switch active" onclick="toggleSwitch(this)"></div>
+                            </div>
+                            <div class="settings-item">
+                                <span>Vibration</span>
+                                <div class="toggle-switch" onclick="toggleSwitch(this)"></div>
+                            </div>
+                        </div>
+
+                        <div class="settings-group">
+                            <div class="settings-header">Permissions</div>
+                            <div class="settings-item">
+                                <span>Camera Access</span>
+                                <button class="permission-btn" onclick="requestPermission('camera')">Grant</button>
+                            </div>
+                            <div class="settings-item">
+                                <span>Microphone Access</span>
+                                <button class="permission-btn" onclick="requestPermission('microphone')">Grant</button>
+                            </div>
+                            <div class="settings-item">
+                                <span>Location Access</span>
+                                <button class="permission-btn" onclick="requestPermission('location')">Grant</button>
+                            </div>
+                            <div class="settings-item">
+                                <span>Contacts Access</span>
+                                <button class="permission-btn" onclick="requestPermission('contacts')">Grant</button>
+                            </div>
+                        </div>
+
+                        <div class="settings-group">
+                            <div class="settings-header">Device Features</div>
+                            <div class="settings-item">
+                                <span>Motion Sensors</span>
+                                <button class="permission-btn" onclick="requestPermission('motion')">Test</button>
+                            </div>
+                            <div class="settings-item">
+                                <span>Calendar Integration</span>
+                                <button class="permission-btn" onclick="requestPermission('calendar')">Connect</button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Encryption Status Indicator -->
+    <div class="encryption-status">🔒 E2E Encrypted</div>
+
+    <!-- Add User Modal -->
+    <div class="add-user-modal" id="add-user-modal">
+        <div class="add-user-content">
+            <h3 style="margin-bottom: 20px;">Add New Contact</h3>
+            
+            <input type="text" class="search-input" id="search-contacts" placeholder="Search contacts or enter username...">
+            
+            <div style="margin: 20px 0;">
+                <button class="permission-btn" onclick="loadDeviceContacts()" style="width: 100%;">
+                    📱 Import from Device Contacts
+                </button>
+            </div>
+            
+            <div class="contact-list" id="contact-list">
+                <div class="empty-state">
+                    <h4>No contacts found</h4>
+                    <p>Grant contacts permission or search for users</p>
+                </div>
+            </div>
+            
+            <div style="display: flex; gap: 10px; margin-top: 20px;">
+                <button class="permission-btn" onclick="searchUsers()" style="flex: 1;">Search Users</button>
+                <button class="permission-btn" onclick="closeAddUserModal()" style="background: #ccc; color: #333;">Cancel</button>
+            </div>
+        </div>
+    </div>
+    <div class="modal" id="media-modal">
+        <div class="modal-content">
+            <h3 style="margin-bottom: 20px;">Attach Media</h3>
+            <div style="display: flex; flex-direction: column; gap: 10px;">
+                <button class="permission-btn" onclick="capturePhoto()">📷 Take Photo</button>
+                <button class="permission-btn" onclick="recordVideo()">🎥 Record Video</button>
+                <button class="permission-btn" onclick="recordAudio()">🎤 Record Audio</button>
+                <button class="permission-btn" onclick="shareLocation()">📍 Share Location</button>
+                <button class="permission-btn" onclick="closeModal()">Cancel</button>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // App State
+        let currentUser = null;
+        let currentChat = null;
+        let messageCount = 0;
+        let encryptionKey = 'demo-key-12345';
+        let isAuthenticated = false;
+        let users = new Map(); // Store all registered users
+        let userChats = new Map(); // Store user chat histories
+        let onlineUsers = new Set(); // Track online users
+        let contacts = []; // Device contacts
+        let permissions = {
+            camera: false,
+            microphone: false,
+            location: false,
+            notifications: false,
+            motion: false,
+            calendar: false,
+            contacts: false
+        };
+
+        // Initialize App
+        document.addEventListener('DOMContentLoaded', function() {
+            checkAuthentication();
+        });
+
+        function checkAuthentication() {
+            // Check if user is logged in (simulate with localStorage for demo)
+            const savedUser = localStorage.getItem('connecthub_user');
+            if (savedUser) {
+                currentUser = JSON.parse(savedUser);
+                isAuthenticated = true;
+                showApp();
+            } else {
+                showAuthModal();
+            }
+        }
+
+        function showAuthModal() {
+            document.getElementById('auth-modal').classList.remove('hidden');
+            document.getElementById('app-container').style.display = 'none';
+            setupAuthForm();
+        }
+
+        function showApp() {
+            document.getElementById('auth-modal').classList.add('hidden');
+            document.getElementById('app-container').style.display = 'flex';
+            initializeApp();
+            loadUserData();
+        }
+
+        function setupAuthForm() {
+            const form = document.getElementById('auth-form');
+            const switchBtn = document.getElementById('auth-switch-btn');
+            let isSignUp = true;
+
+            form.addEventListener('submit', handleAuth);
+            switchBtn.addEventListener('click', toggleAuthMode);
+
+            function toggleAuthMode() {
+                isSignUp = !isSignUp;
+                const title = document.getElementById('auth-title');
+                const submitBtn = document.getElementById('auth-submit');
+                const confirmPassword = document.getElementById('confirm-password');
+                const switchText = switchBtn.parentElement;
+
+                if (isSignUp) {
+                    title.textContent = 'Welcome to ConnectHub';
+                    submitBtn.textContent = 'Sign Up';
+                    confirmPassword.style.display = 'block';
+                    switchText.innerHTML = 'Already have an account? <button type="button" id="auth-switch-btn">Sign In</button>';
+                } else {
+                    title.textContent = 'Welcome Back';
+                    submitBtn.textContent = 'Sign In';
+                    confirmPassword.style.display = 'none';
+                    switchText.innerHTML = 'Don\'t have an account? <button type="button" id="auth-switch-btn">Sign Up</button>';
+                }
+
+                // Re-attach event listener
+                document.getElementById('auth-switch-btn').addEventListener('click', toggleAuthMode);
+            }
+
+            async function handleAuth(e) {
+                e.preventDefault();
+                
+                const username = document.getElementById('username').value;
+                const email = document.getElementById('email').value;
+                const password = document.getElementById('password').value;
+                const confirmPassword = document.getElementById('confirm-password').value;
+
+                if (isSignUp) {
+                    if (password !== confirmPassword) {
+                        alert('Passwords do not match!');
+                        return;
+                    }
+                    await signUp(username, email, password);
+                } else {
+                    await signIn(username, password);
+                }
+            }
+        }
+
+        async function signUp(username, email, password) {
+            // Simulate API call
+            try {
+                // Check if user already exists
+                const existingUsers = JSON.parse(localStorage.getItem('connecthub_users') || '{}');
+                if (existingUsers[username]) {
+                    alert('Username already exists!');
+                    return;
+                }
+
+                // Create new user
+                const newUser = {
+                    id: Date.now().toString(),
+                    username: username,
+                    email: email,
+                    password: password, // In real app, this would be hashed
+                    joinDate: new Date().toISOString(),
+                    avatar: username.substring(0, 2).toUpperCase(),
+                    isOnline: true
+                };
+
+                // Save to "database"
+                existingUsers[username] = newUser;
+                localStorage.setItem('connecthub_users', JSON.stringify(existingUsers));
+                
+                // Login user
+                currentUser = newUser;
+                localStorage.setItem('connecthub_user', JSON.stringify(newUser));
+                isAuthenticated = true;
+                
+                // Add to online users
+                onlineUsers.add(username);
+                
+                showApp();
+                alert('Account created successfully!');
+            } catch (error) {
+                alert('Sign up failed: ' + error.message);
+            }
+        }
+
+        async function signIn(username, password) {
+            try {
+                const existingUsers = JSON.parse(localStorage.getItem('connecthub_users') || '{}');
+                const user = existingUsers[username];
+
+                if (!user || user.password !== password) {
+                    alert('Invalid username or password!');
+                    return;
+                }
+
+                // Login user
+                user.isOnline = true;
+                currentUser = user;
+                localStorage.setItem('connecthub_user', JSON.stringify(user));
+                isAuthenticated = true;
+                
+                // Add to online users
+                onlineUsers.add(username);
+                
+                showApp();
+                alert('Welcome back!');
+            } catch (error) {
+                alert('Sign in failed: ' + error.message);
+            }
+        }
+
+        function logout() {
+            if (confirm('Are you sure you want to logout?')) {
+                // Remove from online users
+                if (currentUser) {
+                    onlineUsers.delete(currentUser.username);
+                }
+                
+                // Clear user data
+                localStorage.removeItem('connecthub_user');
+                currentUser = null;
+                isAuthenticated = false;
+                currentChat = null;
+                
+                // Reset UI
+                document.getElementById('chat-list').innerHTML = '<div class="empty-state" id="empty-chats"><h3>No Chats Yet</h3><p>Start by adding contacts to begin chatting!</p></div>';
+                
+                showAuthModal();
+            }
+        }
+
+        function loadUserData() {
+            if (!currentUser) return;
+            // Update UI with user info
+            const userInfoSpan = document.querySelector('.user-info span');
+            if (userInfoSpan) userInfoSpan.textContent = currentUser.username;
+            const userAvatar = document.querySelector('.user-avatar');
+            if (userAvatar) userAvatar.textContent = currentUser.avatar;
+            const currentUsernameElem = document.getElementById('current-username');
+            if (currentUsernameElem) currentUsernameElem.textContent = currentUser.username;
+            // Load chats
+            loadUserChats();
+        }
+
+        function loadUserChats() {
+            const savedChats = JSON.parse(localStorage.getItem(`connecthub_chats_${currentUser.id}`) || '{}');
+            userChats = new Map(Object.entries(savedChats));
+            
+            updateChatList();
+        }
+
+        function updateChatList() {
+            const chatList = document.getElementById('chat-list');
+            const existingUsers = JSON.parse(localStorage.getItem('connecthub_users') || '{}');
+            
+            if (userChats.size === 0) {
+                chatList.innerHTML = '<div class="empty-state" id="empty-chats"><h3>No Chats Yet</h3><p>Start by adding contacts to begin chatting!</p></div>';
+                return;
+            }
+            
+            chatList.innerHTML = '';
+            
+            userChats.forEach((messages, chatUserId) => {
+                const chatUser = Object.values(existingUsers).find(user => user.id === chatUserId);
+                if (!chatUser) return;
+                
+                const lastMessage = messages[messages.length - 1];
+                const isOnline = onlineUsers.has(chatUser.username);
+                
+                const chatItem = document.createElement('div');
+                chatItem.className = 'chat-item';
+                chatItem.dataset.chat = chatUserId;
+                chatItem.innerHTML = `
+                    <div class="user-avatar" style="position: relative;">
+                        ${chatUser.avatar}
+                        ${isOnline ? '<div class="online-indicator"></div>' : ''}
+                    </div>
+                    <div>
+                        <div style="font-weight: 600;">${chatUser.username}</div>
+                        <div style="font-size: 12px; color: #666;">${lastMessage ? lastMessage.content.substring(0, 30) + '...' : 'No messages yet'}</div>
+                    </div>
+                `;
+                
+                chatItem.addEventListener('click', () => switchChat(chatUserId));
+                chatList.appendChild(chatItem);
+            });
+        }
+
+        function initializeApp() {
+            // Navigation
+            document.querySelectorAll('.nav-item').forEach(item => {
+                item.addEventListener('click', function() {
+                    switchSection(this.dataset.section);
+                });
+            });
+
+            // Auto-scroll messages
+            scrollToBottom();
+            
+            // Initialize real-time features
+            simulateRealTimeChat();
+            initializeDeviceFeatures();
+        }
+
+        function switchSection(section) {
+            // Update navigation
+            document.querySelectorAll('.nav-item').forEach(item => {
+                item.classList.remove('active');
+            });
+            document.querySelector(`[data-section="${section}"]`).classList.add('active');
+
+            // Update sections
+            document.querySelectorAll('.section').forEach(sec => {
+                sec.classList.remove('active');
+            });
+            document.getElementById(`${section}-section`).classList.add('active');
+
+            // Update title
+            const titles = {
+                chat: 'Chat',
+                status: 'Status',
+                settings: 'Settings'
+            };
+            document.getElementById('section-title').textContent = titles[section];
+        }
+
+        function switchChat(chatUserId) {
+            document.querySelectorAll('.chat-item').forEach(item => {
+                item.classList.remove('active');
+            });
+            document.querySelector(`[data-chat="${chatUserId}"]`).classList.add('active');
+            
+            currentChat = chatUserId;
+            loadChatMessages(chatUserId);
+        }
+
+        function loadChatMessages(chatUserId) {
+            const messages = userChats.get(chatUserId) || [];
+            const existingUsers = JSON.parse(localStorage.getItem('connecthub_users') || '{}');
+            const chatUser = Object.values(existingUsers).find(user => user.id === chatUserId);
+            
+            const container = document.getElementById('messages-container');
+            const typingIndicator = document.getElementById('typing-indicator');
+            container.innerHTML = '';
+            
+            if (messages.length === 0) {
+                const emptyState = document.createElement('div');
+                emptyState.className = 'empty-state';
+                emptyState.innerHTML = `
+                    <h3>Start chatting with ${chatUser ? chatUser.username : 'this user'}</h3>
+                    <p>Your messages will appear here</p>
+                `;
+                container.appendChild(emptyState);
+            } else {
+                messages.forEach(msg => {
+                    addMessageToChat(msg.content, msg.senderId === currentUser.id, msg.senderId === currentUser.id ? currentUser.username : chatUser.username);
+                });
+            }
+            
+            container.appendChild(typingIndicator);
+            scrollToBottom();
+        }
+
+        function sendMessage() {
+            const input = document.getElementById('message-input');
+            const message = input.value.trim();
+            
+            if (message) {
+                // Encrypt message (simulation)
+                const encryptedMessage = encryptMessage(message);
+                
+                // Add to chat
+                addMessageToChat(message, true, 'You');
+                input.value = '';
+                scrollToBottom();
+                
+                // Simulate typing and response
+                setTimeout(() => {
+                    showTypingIndicator(true);
+                    setTimeout(() => {
+                        showTypingIndicator(false);
+                        simulateResponse(message);
+                    }, 2000);
+                }, 500);
+            }
+        }
+
+        function addMessageToChat(message, isOwn, sender) {
+            const container = document.getElementById('messages-container');
+            const typingDiv = document.getElementById('typing-indicator');
+            
+            const messageDiv = document.createElement('div');
+            messageDiv.className = `message ${isOwn ? 'own' : ''}`;
+            
+            messageDiv.innerHTML = `
+                ${!isOwn ? `<div class="user-avatar">${sender.substring(0, 2).toUpperCase()}</div>` : ''}
+                <div class="message-bubble">${message}</div>
+            `;
+            
+            container.insertBefore(messageDiv, typingDiv);
+            messageCount++;
+        }
+
+        function simulateResponse(originalMessage) {
+            if (!currentChat) return;
+            
+            const responses = [
+                "That's interesting! Tell me more.",
+                "I completely agree with you.",
+                "Thanks for sharing that!",
+                "Let me think about that.",
+                "That sounds great!",
+                "I appreciate your perspective."
+            ];
+            
+            const response = responses[Math.floor(Math.random() * responses.length)];
+            const existingUsers = JSON.parse(localStorage.getItem('connecthub_users') || '{}');
+            const chatUser = Object.values(existingUsers).find(user => user.id === currentChat);
+            
+            if (chatUser) {
+                // Create response message
+                const messageObj = {
+                    id: Date.now().toString(),
+                    content: response,
+                    senderId: currentChat,
+                    receiverId: currentUser.id,
+                    timestamp: new Date().toISOString()
+                };
+                
+                // Add to chat history
+                userChats.get(currentChat).push(messageObj);
+                
+                // Save to localStorage
+                const chatsObj = Object.fromEntries(userChats);
+                localStorage.setItem(`connecthub_chats_${currentUser.id}`, JSON.stringify(chatsObj));
+                
+                addMessageToChat(response, false, chatUser.username);
+                scrollToBottom();
+                
+                // Update chat list
+                updateChatList();
+                
+                // Show notification
+                showNotification(`New message from ${chatUser.username}`, response);
+            }
+        }
+
+        function showTypingIndicator(show) {
+            const indicator = document.getElementById('typing-indicator');
+            indicator.style.display = show ? 'block' : 'none';
+            if (show) scrollToBottom();
+        }
+
+        function scrollToBottom() {
+            const container = document.getElementById('messages-container');
+            container.scrollTop = container.scrollHeight;
+        }
+
+        function handleKeyPress(event) {
+            if (event.key === 'Enter') {
+                sendMessage();
+            }
+        }
+
+        // Encryption simulation
+        function encryptMessage(message) {
+            // Simple XOR encryption for demo
+            let encrypted = '';
+            for (let i = 0; i < message.length; i++) {
+                encrypted += String.fromCharCode(message.charCodeAt(i) ^ encryptionKey.charCodeAt(i % encryptionKey.length));
+            }
+            return btoa(encrypted);
+        }
+
+        function decryptMessage(encryptedMessage) {
+            try {
+                const encrypted = atob(encryptedMessage);
+                let decrypted = '';
+                for (let i = 0; i < encrypted.length; i++) {
+                    decrypted += String.fromCharCode(encrypted.charCodeAt(i) ^ encryptionKey.charCodeAt(i % encryptionKey.length));
+                }
+                return decrypted;
+            } catch (e) {
+                return 'Decryption failed';
+            }
+        }
+
+        function simulateRealTimeChat() {
+            // Simulate real-time messaging for demo
+            setInterval(() => {
+                if (Math.random() < 0.05 && isAuthenticated) { // 5% chance every interval
+                    const existingUsers = JSON.parse(localStorage.getItem('connecthub_users') || '{}');
+                    const otherUsers = Object.values(existingUsers).filter(user => 
+                        user.id !== currentUser.id && onlineUsers.has(user.username)
+                    );
+                    
+                    if (otherUsers.length > 0) {
+                        const randomUser = otherUsers[Math.floor(Math.random() * otherUsers.length)];
+                        const messages = [
+                            'Hey there!',
+                            'How\'s your day going?',
+                            'Just wanted to say hi!',
+                            'Are you free later?',
+                            'Check this out!'
+                        ];
+                        
+                        const message = messages[Math.floor(Math.random() * messages.length)];
+                        
+                        // Simulate receiving a message
+                        const messageObj = {
+                            id: Date.now().toString(),
+                            content: message,
+                            senderId: randomUser.id,
+                            receiverId: currentUser.id,
+                            timestamp: new Date().toISOString()
+                        };
+                        
+                        // Add to chat history if user is in contacts
+                        if (userChats.has(randomUser.id)) {
+                            userChats.get(randomUser.id).push(messageObj);
+                            
+                            // Save to localStorage
+                            const chatsObj = Object.fromEntries(userChats);
+                            localStorage.setItem(`connecthub_chats_${currentUser.id}`, JSON.stringify(chatsObj));
+                            
+                            // Update UI if currently viewing this chat
+                            if (currentChat === randomUser.id) {
+                                addMessageToChat(message, false, randomUser.username);
+                                scrollToBottom();
+                            }
+                            
+                            // Update chat list
+                            updateChatList();
+                            
+                            // Show notification
+                            showNotification(`New message from ${randomUser.username}`, message);
+                        }
+                    }
+                }
+            }, 15000); // Check every 15 seconds
+        }
+
+        // Permission handling
+        async function requestPermission(type) {
+            const button = event.target;
+            
+            try {
+                switch (type) {
+                    case 'camera':
+                        const stream = await navigator.mediaDevices.getUserMedia({ video: true });
+                        stream.getTracks().forEach(track => track.stop());
+                        permissions.camera = true;
+                    case 'notifications':
+                       
+                        
+                    case 'microphone':
+                        const audioStream = await navigator.mediaDevices.getUserMedia({ audio: true });
+                        audioStream.getTracks().forEach(track => track.stop());
+                        permissions.microphone = true;
+                        break;
+                        
+                    case 'location':
+                        navigator.geolocation.getCurrentPosition(
+                            (position) => {
+                                permissions.location = true;
+                                updatePermissionButton(button, true);
+                                alert(`Location: ${position.coords.latitude}, ${position.coords.longitude}`);
+                            },
+                            (error) => {
+                                updatePermissionButton(button, false);
+                                alert('Location access denied');
+                            }
+                        );
+                        return;
+                        
+                    case 'contacts':
+                        // Simulate contacts API (real implementation would use navigator.contacts)
+                        if ('contacts' in navigator && 'ContactsManager' in window) {
+                            try {
+                                const contacts = await navigator.contacts.select(['name', 'email', 'tel']);
+                                permissions.contacts = true;
+                                console.log('Contacts loaded:', contacts);
+                            } catch (error) {
+                                // Fallback to manual permission grant
+                                permissions.contacts = true;
+                            }
+                        } else {
+                            // Fallback for browsers without Contacts API
+                            permissions.contacts = true;
+                            alert('Contacts access granted! (Demo mode - using simulated contacts)');
+                        }
+                        break;
+                        const notificationPermission = await Notification.requestPermission();
+                        permissions.notifications = notificationPermission === 'granted';
+                        break;
+                        
+                    case 'motion':
+                        if (typeof DeviceMotionEvent !== 'undefined' && typeof DeviceMotionEvent.requestPermission === 'function') {
+                            const motionPermission = await DeviceMotionEvent.requestPermission();
+                            permissions.motion = motionPermission === 'granted';
+                        } else {
+                            permissions.motion = true; // Assume granted on non-iOS devices
+                        }
+                        startMotionDetection();
+                        break;
+                        
+                    case 'calendar':
+                        // Simulate calendar integration
+                        permissions.calendar = true;
+                        alert('Calendar integration enabled! (Demo mode)');
+                        break;
+                }
+                
+                updatePermissionButton(button, true);
+            } catch (error) {
+                console.error('Permission error:', error);
+                updatePermissionButton(button, false);
+            }
+        }
+
+        function updatePermissionButton(button, granted) {
+            if (granted) {
+                button.textContent = 'Granted';
+                button.classList.add('granted');
+                button.classList.remove('denied');
+            } else {
+                button.textContent = 'Denied';
+                button.classList.add('denied');
+                button.classList.remove('granted');
+            }
+        }
+
+        // Device features
+        function initializeDeviceFeatures() {
+            // Check for device capabilities
+            if ('geolocation' in navigator) {
+                console.log('Geolocation supported');
+            }
+            
+            if ('DeviceMotionEvent' in window) {
+                console.log('Motion sensors supported');
+            }
+            
+            if ('mediaDevices' in navigator) {
+                console.log('Media devices supported');
+            }
+        }
+
+        function startMotionDetection() {
+            if (permissions.motion) {
+                window.addEventListener('devicemotion', (event) => {
+                    const acceleration = event.acceleration;
+                    if (acceleration && (Math.abs(acceleration.x) > 10 || Math.abs(acceleration.y) > 10)) {
+                        console.log('Shake detected!');
+                        // Could trigger an action like emergency contact
+                    }
+                });
+            }
+        }
+
+        // Media functions
+        function openMediaModal() {
+            document.getElementById('media-modal').classList.add('active');
+        }
+
+        function closeModal() {
+            document.getElementById('media-modal').classList.remove('active');
+        }
+
+        async function capturePhoto() {
+            if (!permissions.camera) {
+                await requestPermission('camera');
+            }
+            
+            try {
+                const stream = await navigator.mediaDevices.getUserMedia({ video: true });
+                
+                // Create video element for preview
+                const video = document.createElement('video');
+                video.srcObject = stream;
+                video.autoplay = true;
+                
+                // Create canvas for capture
+                const canvas = document.createElement('canvas');
+                const context = canvas.getContext('2d');
+                
+                // Simulate photo capture
+                setTimeout(() => {
+                    canvas.width = video.videoWidth;
+                    canvas.height = video.videoHeight;
+                    context.drawImage(video, 0, 0);
+                    
+                    // Stop the stream
+                    stream.getTracks().forEach(track => track.stop());
+                    
+                    // Add photo message
+                    addMessageToChat('📷 Photo captured', true, 'You');
+                    closeModal();
+                }, 1000);
+                
+            } catch (error) {
+                console.error('Camera error:', error);
+                alert('Camera access failed');
+            }
+        }
+
+        async function recordVideo() {
+            if (!permissions.camera) {
+                await requestPermission('camera');
+            }
+            
+            try {
+                const stream = await navigator.mediaDevices.getUserMedia({ video: true, audio: true });
+                
+                // Simulate video recording
+                addMessageToChat('🎥 Recording video...', true, 'You');
+                
+                setTimeout(() => {
+                    stream.getTracks().forEach(track => track.stop());
+                    addMessageToChat('🎥 Video recorded (3s)', true, 'You');
+                    closeModal();
+                }, 3000);
+                
+            } catch (error) {
+                console.error('Video error:', error);
+                alert('Video recording failed');
+            }
+        }
+
+        async function recordAudio() {
+            if (!permissions.microphone) {
+                await requestPermission('microphone');
+            }
+            
+            try {
+                const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+                
+                // Simulate audio recording
+                addMessageToChat('🎤 Recording audio...', true, 'You');
+                
+                setTimeout(() => {
+                    stream.getTracks().forEach(track => track.stop());
+                    addMessageToChat('🎤 Voice message (5s)', true, 'You');
+                    closeModal();
+                }, 5000);
+                
+            } catch (error) {
+                console.error('Audio error:', error);
+                alert('Audio recording failed');
+            }
+        }
+
+        function shareLocation() {
+            if (!permissions.location) {
+                requestPermission('location');
+                return;
+            }
+            
+            navigator.geolocation.getCurrentPosition(
+                (position) => {
+                    const lat = position.coords.latitude.toFixed(6);
+                    const lng = position.coords.longitude.toFixed(6);
+                    addMessageToChat(`📍 Location: ${lat}, ${lng}`, true, 'You');
+                    closeModal();
+                },
+                (error) => {
+                    alert('Location sharing failed');
+                }
+            );
+        }
+
+        function captureMedia() {
+            openMediaModal();
+        }
+
+        // Settings functions
+        function toggleSwitch(element) {
+            element.classList.toggle('active');
+        }
+
+        // Notification system
+        function showNotification(title, body) {
+            if (permissions.notifications && 'Notification' in window) {
+                new Notification(title, {
+                    body: body,
+                    icon: 'data:image/svg+xml,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100"><circle cx="50" cy="50" r="40" fill="%23667eea"/><text x="50" y="60" text-anchor="middle" fill="white" font-size="40">💬</text></svg>',
+                    tag: 'chat-message'
+                });
+            } else {
+                // Fallback: show in-app notification
+                showInAppNotification(title, body);
+            }
+        }
+
+        function showInAppNotification(title, body) {
+            const notification = document.createElement('div');
+            notification.style.cssText = `
+                position: fixed;
+                top: 20px;
+                left: 50%;
+                transform: translateX(-50%);
+                background: rgba(102, 126, 234, 0.95);
+                color: white;
+                padding: 15px 20px;
+                border-radius: 10px;
+                z-index: 1001;
+                max-width: 300px;
+                text-align: center;
+                box-shadow: 0 4px 20px rgba(0, 0, 0, 0.3);
+                animation: slideDown 0.3s ease;
+            `;
+            
+            notification.innerHTML = `
+                <strong>${title}</strong><br>
+                <span style="font-size: 14px;">${body}</span>
+            `;
+            
+            document.body.appendChild(notification);
+            
+            setTimeout(() => {
+                notification.style.animation = 'slideUp 0.3s ease';
+                setTimeout(() => {
+                    document.body.removeChild(notification);
+                }, 300);
+            }, 3000);
+        }
+
+        // Add CSS animations
+        const style = document.createElement('style');
+        style.textContent = `
+            @keyframes slideDown {
+                from { transform: translateX(-50%) translateY(-100%); opacity: 0; }
+                to { transform: translateX(-50%) translateY(0); opacity: 1; }
+            }
+            
+            @keyframes slideUp {
+                from { transform: translateX(-50%) translateY(0); opacity: 1; }
+                to { transform: translateX(-50%) translateY(-100%); opacity: 0; }
+            }
+            
+            .pulse {
+                animation: pulse 2s infinite;
+            }
+            
+            @keyframes pulse {
+                0% { transform: scale(1); }
+                50% { transform: scale(1.05); }
+                100% { transform: scale(1); }
+            }
+        `;
+        document.head.appendChild(style);
+
+        // Calendar integration simulation
+        function integrateCalendar() {
+            const events = [
+                { title: 'Team Meeting', time: '10:00 AM', date: 'Today' },
+                { title: 'Project Review', time: '2:00 PM', date: 'Tomorrow' },
+                { title: 'Client Call', time: '4:00 PM', date: 'Friday' }
+            ];
+            
+            console.log('Calendar events:', events);
+            return events;
+        }
+
+        // Background sync simulation
+        function startBackgroundSync() {
+            setInterval(() => {
+                // Simulate message sync
+                console.log('Syncing messages...');
+                
+                // Update message status
+                document.querySelectorAll('.message.own .message-bubble').forEach(bubble => {
+                    if (!bubble.querySelector('.message-status')) {
+                        const status = document.createElement('div');
+                        status.className = 'message-status';
+                        status.style.cssText = 'font-size: 10px; color: rgba(255,255,255,0.7); margin-top: 2px;';
+                        status.textContent = '✓✓';
+                        bubble.appendChild(status);
+                    }
+                });
+            }, 5000);
+        }
+
+        // Initialize background processes
+        setTimeout(() => {
+            startBackgroundSync();
+        }, 1000);
+
+        // Handle app focus/blur for real-time updates
+        document.addEventListener('visibilitychange', () => {
+            if (document.visibilityState === 'visible') {
+                console.log('App focused - syncing...');
+                // Sync messages and update UI
+            } else {
+                console.log('App blurred - maintaining connection...');
+            }
+        });
+
+        // Service Worker simulation for offline capability
+        if ('serviceWorker' in navigator) {
+            // In a real app, you would register a service worker here
+            console.log('Service Worker support detected');
+        }
+
+        // PWA features simulation
+        let deferredPrompt;
+        
+        window.addEventListener('beforeinstallprompt', (e) => {
+            deferredPrompt = e;
+            // Show install button
+            console.log('PWA installation available');
+        });
+
+        // Initialize the app
+        console.log('ConnectHub Communication App initialized');
+        console.log('Features: Real-time chat, E2E encryption, Media sharing, Device integration');
+    </script>
+</body>
+</html>
